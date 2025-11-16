@@ -2,14 +2,103 @@ import { useParams } from "react-router-dom";
 import { trendingVideos } from "@/data/mockVideos";
 import { TopNav } from "@/components/TopNav";
 import { BottomNav } from "@/components/BottomNav";
-import { ThumbsUp, Share2, Download, Flag, Eye, Play } from "lucide-react";
+import { CommentSection } from "@/components/CommentSection";
+import { ThumbsUp, Share2, Download, Flag, Eye, Play, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoCard } from "@/components/VideoCard";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Watch = () => {
   const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const video = trendingVideos.find((v) => v.id === id);
+
+  useEffect(() => {
+    if (user && video) {
+      // Track watch history
+      const trackWatchHistory = async () => {
+        await supabase.from("watch_history").upsert({
+          user_id: user.id,
+          video_id: video.id,
+          video_title: video.title,
+          video_thumbnail: video.thumbnail,
+          channel_name: video.channelName,
+          last_watched_at: new Date().toISOString(),
+        });
+      };
+      trackWatchHistory();
+    }
+  }, [user, video]);
+
+  const handleDownload = async (type: "video" | "audio") => {
+    if (!user) {
+      toast.error("Please login to download");
+      navigate("/auth");
+      return;
+    }
+
+    if (!video) return;
+
+    try {
+      const { error } = await supabase.functions.invoke("initiate-download", {
+        body: {
+          videoId: video.id,
+          videoTitle: video.title,
+          videoThumbnail: video.thumbnail,
+          channelName: video.channelName,
+          downloadType: type,
+          quality: "high",
+        },
+      });
+
+      if (error) throw error;
+
+      toast.success(`${type === "video" ? "Video" : "Audio"} download started!`);
+      navigate("/downloads");
+    } catch (error) {
+      toast.error("Failed to start download");
+      console.error(error);
+    }
+  };
+
+  const handleWatchLater = async () => {
+    if (!user) {
+      toast.error("Please login to save videos");
+      navigate("/auth");
+      return;
+    }
+
+    if (!video) return;
+
+    try {
+      const { error } = await supabase.from("watch_later").insert({
+        user_id: user.id,
+        video_id: video.id,
+        video_title: video.title,
+        video_thumbnail: video.thumbnail,
+        channel_name: video.channelName,
+      });
+
+      if (error) {
+        if (error.code === "23505") {
+          toast.info("Already in Watch Later");
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success("Added to Watch Later");
+      }
+    } catch (error) {
+      toast.error("Failed to save video");
+      console.error(error);
+    }
+  };
 
   if (!video) {
     return (
@@ -71,7 +160,7 @@ const Watch = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" size="sm" className="gap-2">
                   <ThumbsUp className="w-4 h-4" />
                   {formatNumber(video.likes || 0)}
@@ -80,9 +169,31 @@ const Watch = () => {
                   <Share2 className="w-4 h-4" />
                   Share
                 </Button>
-                <Button variant="secondary" size="sm" className="gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => handleDownload("video")}
+                >
                   <Download className="w-4 h-4" />
-                  Download
+                  Video
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => handleDownload("audio")}
+                >
+                  <Download className="w-4 h-4" />
+                  Audio
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleWatchLater}
+                >
+                  <Clock className="w-4 h-4" />
                 </Button>
                 <Button variant="ghost" size="icon">
                   <Flag className="w-4 h-4" />
@@ -103,7 +214,7 @@ const Watch = () => {
             <Separator className="my-6" />
 
             {/* Description */}
-            <div className="bg-secondary p-4 rounded-xl">
+            <div className="bg-secondary p-4 rounded-xl mb-6">
               <h3 className="font-semibold mb-2">Description</h3>
               <p className="text-sm text-muted-foreground whitespace-pre-line">
                 {video.description ||
@@ -116,9 +227,7 @@ const Watch = () => {
             {/* Comments Section */}
             <div>
               <h3 className="font-semibold mb-4">Comments</h3>
-              <div className="text-center py-8 text-muted-foreground">
-                <p>Comments section coming soon</p>
-              </div>
+              <CommentSection videoId={video.id} />
             </div>
           </div>
 
