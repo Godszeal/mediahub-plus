@@ -14,7 +14,264 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      comment_likes: {
+        Row: {
+          comment_id: string
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_likes_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comments: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          likes: number | null
+          parent_comment_id: string | null
+          updated_at: string | null
+          user_id: string
+          video_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          likes?: number | null
+          parent_comment_id?: string | null
+          updated_at?: string | null
+          user_id: string
+          video_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          likes?: number | null
+          parent_comment_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+          video_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_parent_comment_id_fkey"
+            columns: ["parent_comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      downloads: {
+        Row: {
+          channel_name: string | null
+          created_at: string | null
+          download_type: string
+          error_message: string | null
+          file_path: string | null
+          file_size: number | null
+          id: string
+          progress: number | null
+          quality: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+          video_id: string
+          video_thumbnail: string | null
+          video_title: string
+        }
+        Insert: {
+          channel_name?: string | null
+          created_at?: string | null
+          download_type: string
+          error_message?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          id?: string
+          progress?: number | null
+          quality?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+          video_id: string
+          video_thumbnail?: string | null
+          video_title: string
+        }
+        Update: {
+          channel_name?: string | null
+          created_at?: string | null
+          download_type?: string
+          error_message?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          id?: string
+          progress?: number | null
+          quality?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+          video_id?: string
+          video_thumbnail?: string | null
+          video_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "downloads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          id: string
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
+      watch_history: {
+        Row: {
+          channel_name: string | null
+          completed: boolean | null
+          created_at: string | null
+          id: string
+          last_watched_at: string | null
+          total_duration: number | null
+          user_id: string
+          video_id: string
+          video_thumbnail: string | null
+          video_title: string
+          watched_duration: number | null
+        }
+        Insert: {
+          channel_name?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_watched_at?: string | null
+          total_duration?: number | null
+          user_id: string
+          video_id: string
+          video_thumbnail?: string | null
+          video_title: string
+          watched_duration?: number | null
+        }
+        Update: {
+          channel_name?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_watched_at?: string | null
+          total_duration?: number | null
+          user_id?: string
+          video_id?: string
+          video_thumbnail?: string | null
+          video_title?: string
+          watched_duration?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_later: {
+        Row: {
+          channel_name: string | null
+          created_at: string | null
+          id: string
+          user_id: string
+          video_id: string
+          video_thumbnail: string | null
+          video_title: string
+        }
+        Insert: {
+          channel_name?: string | null
+          created_at?: string | null
+          id?: string
+          user_id: string
+          video_id: string
+          video_thumbnail?: string | null
+          video_title: string
+        }
+        Update: {
+          channel_name?: string | null
+          created_at?: string | null
+          id?: string
+          user_id?: string
+          video_id?: string
+          video_thumbnail?: string | null
+          video_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_later_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
