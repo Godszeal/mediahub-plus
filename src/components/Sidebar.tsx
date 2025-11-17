@@ -1,5 +1,5 @@
 import { Home, PlaySquare, Search, TrendingUp, Clock, Download, History, Film } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -7,10 +7,11 @@ import { Separator } from "@/components/ui/separator";
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   const mainNav = [
     { icon: Home, label: "Home", path: "/" },
-    { icon: TrendingUp, label: "Trending", path: "/?category=trending" },
+    { icon: TrendingUp, label: "Trending", path: "/" },
     { icon: PlaySquare, label: "Shorts", path: "/shorts" },
     { icon: Search, label: "Search", path: "/search" },
   ];
@@ -22,11 +23,11 @@ export const Sidebar = () => {
   ];
 
   const categories = [
-    { label: "Gospel Music", path: "/?category=gospel" },
-    { label: "Mount Zion Movies", path: "/?category=mount-zion" },
+    { label: "Gospel Music", path: "/?category=gospel music" },
+    { label: "Mount Zion Movies", path: "/?category=mount zion movies" },
     { label: "Nollywood", path: "/?category=nollywood" },
-    { label: "Teen Nollywood", path: "/?category=teen-nollywood" },
-    { label: "Christian Movies", path: "/?category=christian-movies" },
+    { label: "Teen Nollywood", path: "/?category=teen nollywood" },
+    { label: "Christian Movies", path: "/?category=christian movies" },
   ];
 
   return (
@@ -35,8 +36,7 @@ export const Sidebar = () => {
         <nav className="space-y-2">
           {mainNav.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path || 
-              (item.path.includes("?") && location.search.includes(item.path.split("?")[1]));
+            const isActive = location.pathname === item.path && !location.search;
             
             return (
               <Button
@@ -85,7 +85,8 @@ export const Sidebar = () => {
         <div className="space-y-2">
           <h3 className="px-3 text-sm font-semibold text-muted-foreground">Categories</h3>
           {categories.map((item) => {
-            const isActive = location.search.includes(item.path.split("?")[1]);
+            const searchCategory = item.path.split("category=")[1];
+            const isActive = searchParams.get("category") === searchCategory;
             
             return (
               <Button

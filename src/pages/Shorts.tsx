@@ -30,9 +30,19 @@ const Shorts = () => {
   useEffect(() => {
     const fetchShorts = async () => {
       try {
+        const queries = [
+          "#shorts christian gospel music viral",
+          "funny christian shorts",
+          "christian skits shorts",
+          "gospel music shorts",
+          "christian comedy shorts"
+        ];
+        
+        const randomQuery = queries[Math.floor(Math.random() * queries.length)];
+        
         const { data, error } = await supabase.functions.invoke("youtube-search", {
           body: { 
-            query: "#shorts christian gospel music viral",
+            query: randomQuery,
             maxResults: 20,
             type: "video",
             videoDuration: "short"
@@ -97,7 +107,25 @@ const Shorts = () => {
       const newIndex = Math.round(scrollPosition / windowHeight);
       
       if (newIndex !== currentIndex && newIndex < shorts.length) {
+        // Pause previous video
+        const prevIframe = iframeRefs.current[currentIndex];
+        if (prevIframe?.contentWindow) {
+          prevIframe.contentWindow.postMessage(
+            '{"event":"command","func":"pauseVideo","args":""}',
+            '*'
+          );
+        }
+        
         setCurrentIndex(newIndex);
+        
+        // Auto-play new video
+        const newIframe = iframeRefs.current[newIndex];
+        if (newIframe?.contentWindow) {
+          newIframe.contentWindow.postMessage(
+            '{"event":"command","func":"playVideo","args":""}',
+            '*'
+          );
+        }
       }
     };
 
@@ -174,7 +202,7 @@ const Shorts = () => {
           >
             <iframe
               ref={el => iframeRefs.current[index] = el}
-              src={`https://www.youtube.com/embed/${short.videoId}?autoplay=${index === currentIndex ? 1 : 0}&controls=1&modestbranding=1&rel=0`}
+              src={`https://www.youtube.com/embed/${short.videoId}?autoplay=${index === currentIndex ? 1 : 0}&controls=1&modestbranding=1&rel=0&enablejsapi=1`}
               title={short.title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
