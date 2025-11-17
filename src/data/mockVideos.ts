@@ -75,6 +75,9 @@ export const trendingVideos: Video[] = [
 export const categories = [
   "Trending",
   "Christian Movies",
+  "Mount Zion Movies",
+  "Nollywood",
+  "Teen Nollywood",
   "Hot Movies",
   "South Africa Drama",
   "Korea Drama",
