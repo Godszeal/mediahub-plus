@@ -184,6 +184,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          auto_play: boolean | null
+          created_at: string
+          download_quality: string | null
+          id: string
+          subtitles: boolean | null
+          theme: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_play?: boolean | null
+          created_at?: string
+          download_quality?: string | null
+          id?: string
+          subtitles?: boolean | null
+          theme?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_play?: boolean | null
+          created_at?: string
+          download_quality?: string | null
+          id?: string
+          subtitles?: boolean | null
+          theme?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      video_likes: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+          video_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+          video_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+          video_id?: string
+        }
+        Relationships: []
+      }
       watch_history: {
         Row: {
           channel_name: string | null
