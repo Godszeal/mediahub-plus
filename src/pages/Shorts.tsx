@@ -2,32 +2,84 @@ import { TopNav } from "@/components/TopNav";
 import { BottomNav } from "@/components/BottomNav";
 import { ThumbsUp, MessageCircle, Share2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface Short {
+  id: string;
+  videoId: string;
+  title: string;
+  channel: string;
+  thumbnail: string;
+}
 
 const Shorts = () => {
-  const shorts = [
-    {
-      id: 1,
-      video: "https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400&h=700&fit=crop",
-      title: "Amazing Gospel Performance",
-      channel: "Worship Channel",
-      likes: "125K",
-    },
-  ];
+  const [shorts, setShorts] = useState<Short[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchShorts = async () => {
+      try {
+        // Search for short videos (typically under 60 seconds)
+        const { data, error } = await supabase.functions.invoke("youtube-search", {
+          body: { 
+            query: "shorts christian gospel music trending",
+            maxResults: 20,
+            type: "video"
+          },
+        });
+
+        if (error) throw error;
+
+        const formattedShorts: Short[] = data.items?.map((item: any, index: number) => ({
+          id: `${index}`,
+          videoId: item.id.videoId,
+          title: item.snippet.title,
+          channel: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.high.url,
+        })) || [];
+
+        setShorts(formattedShorts);
+      } catch (error) {
+        toast.error("Failed to load shorts");
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchShorts();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
+          <p className="text-muted-foreground">Loading shorts...</p>
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <TopNav />
 
-      <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)] overflow-y-scroll snap-y snap-mandatory">
+      <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)] overflow-y-auto snap-y snap-mandatory scrollbar-hide">
         {shorts.map((short) => (
           <div
             key={short.id}
             className="h-full snap-start relative flex items-center justify-center bg-black"
           >
-            <img
-              src={short.video}
-              alt={short.title}
-              className="h-full w-auto max-w-full object-contain"
+            <iframe
+              src={`https://www.youtube.com/embed/${short.videoId}?autoplay=0&controls=1&modestbranding=1`}
+              title={short.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="h-full w-full max-w-md object-contain"
             />
 
             {/* Info Overlay */}
@@ -46,7 +98,6 @@ const Shorts = () => {
                 >
                   <ThumbsUp className="w-6 h-6" />
                 </Button>
-                <span className="text-xs text-white font-medium">{short.likes}</span>
               </div>
 
               <Button

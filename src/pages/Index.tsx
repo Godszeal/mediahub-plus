@@ -16,29 +16,113 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchTrendingVideos = async () => {
+    const fetchVideos = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("youtube-trending", {
-          body: { regionCode: "US", maxResults: 50 },
-        });
+        let query = "";
+        let useSearch = false;
 
-        if (error) throw error;
+        // Map categories to search queries
+        switch (activeCategory) {
+          case "Trending":
+            // Use trending endpoint
+            break;
+          case "Christian Movies":
+            query = "christian movies full 2024";
+            useSearch = true;
+            break;
+          case "Mount Zion Movies":
+            query = "mount zion movies latest 2024";
+            useSearch = true;
+            break;
+          case "Nollywood":
+            query = "nollywood movies latest 2024";
+            useSearch = true;
+            break;
+          case "Teen Nollywood":
+            query = "teen nollywood movies 2024";
+            useSearch = true;
+            break;
+          case "Hot Movies":
+            query = "trending movies 2024";
+            useSearch = true;
+            break;
+          case "South Africa Drama":
+            query = "south african drama series 2024";
+            useSearch = true;
+            break;
+          case "Korea Drama":
+            query = "korean drama 2024";
+            useSearch = true;
+            break;
+          case "Tanzania Drama":
+            query = "tanzania drama series 2024";
+            useSearch = true;
+            break;
+          case "Music":
+            query = "gospel music latest 2024";
+            useSearch = true;
+            break;
+          case "Music Videos":
+            query = "gospel music videos 2024";
+            useSearch = true;
+            break;
+          case "News":
+            query = "christian news today";
+            useSearch = true;
+            break;
+          case "Recommended":
+            query = "recommended christian content";
+            useSearch = true;
+            break;
+          default:
+            useSearch = true;
+            query = activeCategory;
+        }
 
-        const formattedVideos: Video[] = data.items?.map((item: any) => ({
-          id: item.id,
-          title: item.snippet.title,
-          thumbnail: item.snippet.thumbnails.medium.url,
-          channelName: item.snippet.channelTitle,
-          channelAvatar: "",
-          views: parseInt(item.statistics.viewCount || "0"),
-          uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
-          duration: "0:00",
-          description: item.snippet.description,
-          likes: parseInt(item.statistics.likeCount || "0"),
-          category: item.snippet.categoryId,
-        })) || [];
+        if (useSearch) {
+          const { data, error } = await supabase.functions.invoke("youtube-search", {
+            body: { query, maxResults: 25 },
+          });
 
-        setVideos(formattedVideos);
+          if (error) throw error;
+
+          const formattedVideos: Video[] = data.items?.map((item: any) => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            thumbnail: item.snippet.thumbnails.medium.url,
+            channelName: item.snippet.channelTitle,
+            channelAvatar: "",
+            views: 0,
+            uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+            duration: "0:00",
+            description: item.snippet.description,
+            category: activeCategory,
+          })) || [];
+
+          setVideos(formattedVideos);
+        } else {
+          const { data, error } = await supabase.functions.invoke("youtube-trending", {
+            body: { regionCode: "US", maxResults: 50 },
+          });
+
+          if (error) throw error;
+
+          const formattedVideos: Video[] = data.items?.map((item: any) => ({
+            id: item.id,
+            title: item.snippet.title,
+            thumbnail: item.snippet.thumbnails.medium.url,
+            channelName: item.snippet.channelTitle,
+            channelAvatar: "",
+            views: parseInt(item.statistics.viewCount || "0"),
+            uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+            duration: "0:00",
+            description: item.snippet.description,
+            likes: parseInt(item.statistics.likeCount || "0"),
+            category: "Trending",
+          })) || [];
+
+          setVideos(formattedVideos);
+        }
       } catch (error) {
         toast.error("Failed to load videos");
         console.error(error);
@@ -47,8 +131,9 @@ const Index = () => {
       }
     };
 
-    fetchTrendingVideos();
-  }, []);
+    setLoading(true);
+    fetchVideos();
+  }, [activeCategory]);
 
   const scroll = (direction: "left" | "right") => {
     if (categoryScrollRef.current) {
@@ -61,7 +146,7 @@ const Index = () => {
   };
 
   const videosByCategory = {
-    Trending: videos,
+    [activeCategory]: videos,
   };
 
   return (
