@@ -37,18 +37,31 @@ const Index = () => {
 
         if (error) throw error;
 
-        const formatted: Video[] = data.items?.map((item: any) => ({
-          id: item.id.videoId || item.id,
-          title: item.snippet.title,
-          thumbnail: item.snippet.thumbnails.medium.url,
-          channelName: item.snippet.channelTitle,
-          channelAvatar: "",
-          views: 0,
-          uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
-          duration: "0:00",
-          description: item.snippet.description,
-          category: activeCategory,
-        })) || [];
+        // Get video IDs to fetch stats
+        const videoIds = data.items?.map((item: any) => item.id.videoId || item.id) || [];
+        
+        // Fetch video statistics
+        const { data: statsData } = await supabase.functions.invoke("youtube-video-stats", {
+          body: { videoIds },
+        });
+
+        const formatted: Video[] = data.items?.map((item: any) => {
+          const videoId = item.id.videoId || item.id;
+          const stats = statsData?.items?.find((s: any) => s.videoId === videoId);
+          
+          return {
+            id: videoId,
+            title: item.snippet.title,
+            thumbnail: item.snippet.thumbnails.medium.url,
+            channelName: item.snippet.channelTitle,
+            channelAvatar: "",
+            views: stats?.views || 0,
+            uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+            duration: stats?.duration || "0:00",
+            description: item.snippet.description,
+            category: activeCategory,
+          };
+        }) || [];
 
         setVideosByCategory({ [activeCategory]: formatted });
       } catch (error) {
@@ -65,24 +78,35 @@ const Index = () => {
   useEffect(() => {
     const fetchCarouselVideos = async () => {
       try {
-        const categoriesToFetch = ["gospel music", "nollywood", "mount zion movies"];
+        const categoriesToFetch = ["gospel music", "nollywood", "mount zion movies", "teen nollywood"];
         const promises = categoriesToFetch.map(async (cat) => {
           const { data } = await supabase.functions.invoke("youtube-search", {
             body: { query: cat, maxResults: 10 },
           });
           
-          const formatted: Video[] = data?.items?.map((item: any) => ({
-            id: item.id.videoId,
-            title: item.snippet.title,
-            thumbnail: item.snippet.thumbnails.medium.url,
-            channelName: item.snippet.channelTitle,
-            channelAvatar: "",
-            views: 0,
-            uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
-            duration: "0:00",
-            description: item.snippet.description,
-            category: cat,
-          })) || [];
+          const videoIds = data?.items?.map((item: any) => item.id.videoId) || [];
+          
+          // Fetch stats for carousel videos
+          const { data: statsData } = await supabase.functions.invoke("youtube-video-stats", {
+            body: { videoIds },
+          });
+          
+          const formatted: Video[] = data?.items?.map((item: any) => {
+            const stats = statsData?.items?.find((s: any) => s.videoId === item.id.videoId);
+            
+            return {
+              id: item.id.videoId,
+              title: item.snippet.title,
+              thumbnail: item.snippet.thumbnails.medium.url,
+              channelName: item.snippet.channelTitle,
+              channelAvatar: "",
+              views: stats?.views || 0,
+              uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+              duration: stats?.duration || "0:00",
+              description: item.snippet.description,
+              category: cat,
+            };
+          }) || [];
 
           return { category: cat, videos: formatted };
         });
@@ -115,20 +139,20 @@ const Index = () => {
 
         <div className="container mx-auto px-4 py-6">
           {/* Category Pills */}
-          <div className="flex gap-3 overflow-x-auto pb-4 mb-6 scrollbar-hide">
+          <div className="flex gap-3 overflow-x-auto pb-4 mb-6 scrollbar-hide snap-x snap-mandatory">
             <Button
               variant={activeCategory === "all" ? "default" : "secondary"}
               onClick={() => handleCategoryChange("all")}
-              className="rounded-full whitespace-nowrap"
+              className="rounded-full whitespace-nowrap snap-center flex-shrink-0"
             >
               All
             </Button>
             {categories.slice(1).map((category) => (
               <Button
                 key={category}
-                variant={activeCategory === category.toLowerCase() ? "default" : "secondary"}
+                variant={activeCategory === category.toLowerCase().replace(/ /g, "-") ? "default" : "secondary"}
                 onClick={() => handleCategoryChange(category.toLowerCase())}
-                className="rounded-full whitespace-nowrap"
+                className="rounded-full whitespace-nowrap snap-center flex-shrink-0"
               >
                 {category}
               </Button>
