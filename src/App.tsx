@@ -10,6 +10,8 @@ import Shorts from "./pages/Shorts";
 import SearchPage from "./pages/SearchPage";
 import Profile from "./pages/Profile";
 import Downloads from "./pages/Downloads";
+import WatchLater from "./pages/WatchLater";
+import WatchHistory from "./pages/WatchHistory";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -29,6 +31,8 @@ const App = () => (
             <Route path="/search" element={<SearchPage />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/downloads" element={<Downloads />} />
+            <Route path="/watch-later" element={<WatchLater />} />
+            <Route path="/watch-history" element={<WatchHistory />} />
             <Route path="/auth" element={<Auth />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

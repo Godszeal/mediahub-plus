@@ -5,13 +5,33 @@ import { Download, History, Clock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [downloadQuality, setDownloadQuality] = useState("HD");
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [subtitles, setSubtitles] = useState("English");
 
   const handleDownloads = () => {
     navigate("/downloads");
+  };
+
+  const handleWatchHistory = () => {
+    navigate("/watch-history");
+  };
+
+  const handleWatchLater = () => {
+    navigate("/watch-later");
   };
 
   return (
@@ -50,11 +70,19 @@ const Profile = () => {
                 <Download className="w-6 h-6" />
                 <span>Downloads</span>
               </Button>
-              <Button variant="secondary" className="h-24 flex-col gap-2">
+              <Button
+                variant="secondary"
+                className="h-24 flex-col gap-2"
+                onClick={handleWatchHistory}
+              >
                 <History className="w-6 h-6" />
                 <span>Watch History</span>
               </Button>
-              <Button variant="secondary" className="h-24 flex-col gap-2">
+              <Button
+                variant="secondary"
+                className="h-24 flex-col gap-2"
+                onClick={handleWatchLater}
+              >
                 <Clock className="w-6 h-6" />
                 <span>Watch Later</span>
               </Button>
@@ -63,24 +91,37 @@ const Profile = () => {
             {/* Settings */}
             <div className="space-y-4">
               <h2 className="text-xl font-semibold">Settings</h2>
-              <div className="bg-card rounded-xl p-4 space-y-4">
+              <div className="bg-card rounded-xl p-4 space-y-6">
                 <div className="flex justify-between items-center">
                   <span>Download Quality</span>
-                  <Button variant="ghost" size="sm">
-                    HD
-                  </Button>
+                  <Select value={downloadQuality} onValueChange={setDownloadQuality}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4K">4K</SelectItem>
+                      <SelectItem value="HD">HD</SelectItem>
+                      <SelectItem value="SD">SD</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Auto-play</span>
-                  <Button variant="ghost" size="sm">
-                    On
-                  </Button>
+                  <Switch checked={autoPlay} onCheckedChange={setAutoPlay} />
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Subtitles</span>
-                  <Button variant="ghost" size="sm">
-                    English
-                  </Button>
+                  <Select value={subtitles} onValueChange={setSubtitles}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="Spanish">Spanish</SelectItem>
+                      <SelectItem value="French">French</SelectItem>
+                      <SelectItem value="Off">Off</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

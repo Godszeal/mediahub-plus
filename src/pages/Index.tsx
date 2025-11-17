@@ -1,14 +1,54 @@
 import { TopNav } from "@/components/TopNav";
 import { BottomNav } from "@/components/BottomNav";
 import { CategorySection } from "@/components/CategorySection";
-import { trendingVideos, categories } from "@/data/mockVideos";
+import { categories } from "@/data/mockVideos";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Video } from "@/types/video";
+import { toast } from "sonner";
 
 const Index = () => {
   const [activeCategory, setActiveCategory] = useState("Trending");
   const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTrendingVideos = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("youtube-trending", {
+          body: { regionCode: "US", maxResults: 50 },
+        });
+
+        if (error) throw error;
+
+        const formattedVideos: Video[] = data.items?.map((item: any) => ({
+          id: item.id,
+          title: item.snippet.title,
+          thumbnail: item.snippet.thumbnails.medium.url,
+          channelName: item.snippet.channelTitle,
+          channelAvatar: "",
+          views: parseInt(item.statistics.viewCount || "0"),
+          uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+          duration: "0:00",
+          description: item.snippet.description,
+          likes: parseInt(item.statistics.likeCount || "0"),
+          category: item.snippet.categoryId,
+        })) || [];
+
+        setVideos(formattedVideos);
+      } catch (error) {
+        toast.error("Failed to load videos");
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTrendingVideos();
+  }, []);
 
   const scroll = (direction: "left" | "right") => {
     if (categoryScrollRef.current) {
@@ -20,16 +60,8 @@ const Index = () => {
     }
   };
 
-  // Group videos by category for display
   const videosByCategory = {
-    Trending: trendingVideos.filter((v) => v.category !== "News"),
-    "Christian Movies": trendingVideos.filter((v) => v.category === "Christian Movies"),
-    "Hot Movies": trendingVideos.slice(0, 4),
-    "South Africa Drama": trendingVideos.filter((v) => v.category === "South Africa Drama"),
-    "Korea Drama": trendingVideos.filter((v) => v.category === "Korea Drama"),
-    "Tanzania Drama": trendingVideos.filter((v) => v.category === "Tanzania Drama"),
-    Music: trendingVideos.filter((v) => v.category === "Music"),
-    News: trendingVideos.filter((v) => v.category === "News"),
+    Trending: videos,
   };
 
   return (
@@ -80,11 +112,17 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
-        {Object.entries(videosByCategory).map(
-          ([category, videos]) =>
-            videos.length > 0 && (
-              <CategorySection key={category} title={category} videos={videos} />
-            )
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading videos...</p>
+          </div>
+        ) : (
+          Object.entries(videosByCategory).map(
+            ([category, categoryVideos]) =>
+              categoryVideos.length > 0 && (
+                <CategorySection key={category} title={category} videos={categoryVideos} />
+              )
+          )
         )}
       </main>
 
