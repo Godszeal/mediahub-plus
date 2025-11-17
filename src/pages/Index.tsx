@@ -1,92 +1,77 @@
 import { TopNav } from "@/components/TopNav";
 import { BottomNav } from "@/components/BottomNav";
-import { CategorySection } from "@/components/CategorySection";
+import { VideoCard } from "@/components/VideoCard";
+import { MovieCarousel } from "@/components/MovieCarousel";
+import { Sidebar } from "@/components/Sidebar";
 import { categories } from "@/data/mockVideos";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Video } from "@/types/video";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
-  const [activeCategory, setActiveCategory] = useState("Trending");
-  const categoryScrollRef = useRef<HTMLDivElement>(null);
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryParam = searchParams.get("category") || "all";
+  const [activeCategory, setActiveCategory] = useState(categoryParam);
+  const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
   const [loading, setLoading] = useState(true);
+  const [carouselVideos, setCarouselVideos] = useState<Record<string, Video[]>>({});
+
+  useEffect(() => {
+    setActiveCategory(categoryParam);
+  }, [categoryParam]);
 
   useEffect(() => {
     const fetchVideos = async () => {
+      setLoading(true);
       try {
-        let query = "";
-        let useSearch = false;
+        const query = activeCategory === "all" ? "trending christian movies" : activeCategory;
+        const { data, error } = await supabase.functions.invoke(
+          activeCategory === "all" ? "youtube-trending" : "youtube-search",
+          {
+            body: activeCategory === "all" ? {} : { query, maxResults: 20 },
+          }
+        );
 
-        // Map categories to search queries
-        switch (activeCategory) {
-          case "Trending":
-            // Use trending endpoint
-            break;
-          case "Christian Movies":
-            query = "christian movies full 2024";
-            useSearch = true;
-            break;
-          case "Mount Zion Movies":
-            query = "mount zion movies latest 2024";
-            useSearch = true;
-            break;
-          case "Nollywood":
-            query = "nollywood movies latest 2024";
-            useSearch = true;
-            break;
-          case "Teen Nollywood":
-            query = "teen nollywood movies 2024";
-            useSearch = true;
-            break;
-          case "Hot Movies":
-            query = "trending movies 2024";
-            useSearch = true;
-            break;
-          case "South Africa Drama":
-            query = "south african drama series 2024";
-            useSearch = true;
-            break;
-          case "Korea Drama":
-            query = "korean drama 2024";
-            useSearch = true;
-            break;
-          case "Tanzania Drama":
-            query = "tanzania drama series 2024";
-            useSearch = true;
-            break;
-          case "Music":
-            query = "gospel music latest 2024";
-            useSearch = true;
-            break;
-          case "Music Videos":
-            query = "gospel music videos 2024";
-            useSearch = true;
-            break;
-          case "News":
-            query = "christian news today";
-            useSearch = true;
-            break;
-          case "Recommended":
-            query = "recommended christian content";
-            useSearch = true;
-            break;
-          default:
-            useSearch = true;
-            query = activeCategory;
-        }
+        if (error) throw error;
 
-        if (useSearch) {
-          const { data, error } = await supabase.functions.invoke("youtube-search", {
-            body: { query, maxResults: 25 },
+        const formatted: Video[] = data.items?.map((item: any) => ({
+          id: item.id.videoId || item.id,
+          title: item.snippet.title,
+          thumbnail: item.snippet.thumbnails.medium.url,
+          channelName: item.snippet.channelTitle,
+          channelAvatar: "",
+          views: 0,
+          uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
+          duration: "0:00",
+          description: item.snippet.description,
+          category: activeCategory,
+        })) || [];
+
+        setVideosByCategory({ [activeCategory]: formatted });
+      } catch (error) {
+        toast.error("Failed to load videos");
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVideos();
+  }, [activeCategory]);
+
+  useEffect(() => {
+    const fetchCarouselVideos = async () => {
+      try {
+        const categoriesToFetch = ["gospel music", "nollywood", "mount zion movies"];
+        const promises = categoriesToFetch.map(async (cat) => {
+          const { data } = await supabase.functions.invoke("youtube-search", {
+            body: { query: cat, maxResults: 10 },
           });
-
-          if (error) throw error;
-
-          const formattedVideos: Video[] = data.items?.map((item: any) => ({
+          
+          const formatted: Video[] = data?.items?.map((item: any) => ({
             id: item.id.videoId,
             title: item.snippet.title,
             thumbnail: item.snippet.thumbnails.medium.url,
@@ -96,122 +81,89 @@ const Index = () => {
             uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
             duration: "0:00",
             description: item.snippet.description,
-            category: activeCategory,
+            category: cat,
           })) || [];
 
-          setVideos(formattedVideos);
-        } else {
-          const { data, error } = await supabase.functions.invoke("youtube-trending", {
-            body: { regionCode: "US", maxResults: 50 },
-          });
+          return { category: cat, videos: formatted };
+        });
 
-          if (error) throw error;
-
-          const formattedVideos: Video[] = data.items?.map((item: any) => ({
-            id: item.id,
-            title: item.snippet.title,
-            thumbnail: item.snippet.thumbnails.medium.url,
-            channelName: item.snippet.channelTitle,
-            channelAvatar: "",
-            views: parseInt(item.statistics.viewCount || "0"),
-            uploadedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
-            duration: "0:00",
-            description: item.snippet.description,
-            likes: parseInt(item.statistics.likeCount || "0"),
-            category: "Trending",
-          })) || [];
-
-          setVideos(formattedVideos);
-        }
+        const results = await Promise.all(promises);
+        const carouselData: Record<string, Video[]> = {};
+        results.forEach(({ category, videos }) => {
+          carouselData[category] = videos;
+        });
+        setCarouselVideos(carouselData);
       } catch (error) {
-        toast.error("Failed to load videos");
-        console.error(error);
-      } finally {
-        setLoading(false);
+        console.error("Failed to load carousel videos:", error);
       }
     };
 
-    setLoading(true);
-    fetchVideos();
-  }, [activeCategory]);
+    fetchCarouselVideos();
+  }, []);
 
-  const scroll = (direction: "left" | "right") => {
-    if (categoryScrollRef.current) {
-      const scrollAmount = 200;
-      categoryScrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
-
-  const videosByCategory = {
-    [activeCategory]: videos,
+  const handleCategoryChange = (category: string) => {
+    setActiveCategory(category);
+    setSearchParams(category === "all" ? {} : { category });
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-0">
-      <TopNav />
+    <div className="min-h-screen bg-background flex">
+      <Sidebar />
+      
+      <div className="flex-1 pb-20 md:pb-0">
+        <TopNav />
 
-      {/* Category Pills */}
-      <div className="sticky top-16 z-40 bg-background border-b border-border">
-        <div className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 hidden md:flex"
-            onClick={() => scroll("left")}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
+        <div className="container mx-auto px-4 py-6">
+          {/* Category Pills */}
+          <div className="flex gap-3 overflow-x-auto pb-4 mb-6 scrollbar-hide">
+            <Button
+              variant={activeCategory === "all" ? "default" : "secondary"}
+              onClick={() => handleCategoryChange("all")}
+              className="rounded-full whitespace-nowrap"
+            >
+              All
+            </Button>
+            {categories.slice(1).map((category) => (
+              <Button
+                key={category}
+                variant={activeCategory === category.toLowerCase() ? "default" : "secondary"}
+                onClick={() => handleCategoryChange(category.toLowerCase())}
+                className="rounded-full whitespace-nowrap"
+              >
+                {category}
+              </Button>
+            ))}
+          </div>
 
-          <div
-            ref={categoryScrollRef}
-            className="overflow-x-auto scrollbar-hide px-4 md:px-12"
-          >
-            <div className="flex gap-3 py-4 min-w-max">
-              {categories.map((category) => (
-                <Button
+          {/* Movie Carousels */}
+          {activeCategory === "all" && (
+            <div className="mb-8 space-y-6">
+              {Object.entries(carouselVideos).map(([category, videos]) => (
+                <MovieCarousel
                   key={category}
-                  variant={activeCategory === category ? "default" : "secondary"}
-                  size="sm"
-                  onClick={() => setActiveCategory(category)}
-                  className="whitespace-nowrap"
-                >
-                  {category}
-                </Button>
+                  title={category.charAt(0).toUpperCase() + category.slice(1)}
+                  videos={videos}
+                />
               ))}
             </div>
-          </div>
+          )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 hidden md:flex"
-            onClick={() => scroll("right")}
-          >
-            <ChevronRight className="w-5 h-5" />
-          </Button>
+          {/* Videos Grid */}
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <p className="text-muted-foreground">Loading videos...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {videosByCategory[activeCategory]?.map((video) => (
+                <VideoCard key={video.id} video={video} />
+              ))}
+            </div>
+          )}
         </div>
+
+        <BottomNav />
       </div>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        {loading ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Loading videos...</p>
-          </div>
-        ) : (
-          Object.entries(videosByCategory).map(
-            ([category, categoryVideos]) =>
-              categoryVideos.length > 0 && (
-                <CategorySection key={category} title={category} videos={categoryVideos} />
-              )
-          )
-        )}
-      </main>
-
-      <BottomNav />
     </div>
   );
 };

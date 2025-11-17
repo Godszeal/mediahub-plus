@@ -84,9 +84,7 @@ All colors MUST be HSL.
     @apply bg-background text-foreground font-sans antialiased;
   }
 
-  html {
-    @apply dark;
-  }
+  /* Default theme is set via user preferences */
 }
 
 @layer utilities {
