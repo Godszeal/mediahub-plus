@@ -5,13 +5,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 4000) {
+function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 5000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   return fetch(resource, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
-async function getInvidiousBase(): Promise<string> {
+async function getInvidiousBase(): Promise<string | null> {
   try {
     const res = await fetchWithTimeout(
       "https://api.invidious.io/instances.json?sort_by=type,health",
@@ -31,9 +31,7 @@ async function getInvidiousBase(): Promise<string> {
         }
       }
     }
-  } catch (e) {
-    console.warn("Failed to fetch instances list", e);
-  }
+  } catch (_) {}
   const fallbacks = [
     "https://yewtu.be",
     "https://invidious.nerdvpn.de",
@@ -46,7 +44,23 @@ async function getInvidiousBase(): Promise<string> {
       if (stats.ok) return base;
     } catch (_) {}
   }
-  return "https://yewtu.be";
+  return null;
+}
+
+async function getPipedBase(): Promise<string | null> {
+  const fallbacks = [
+    "https://piped.video",
+    "https://pipedapi.kavin.rocks",
+    "https://piped.yt",
+    "https://watch.leptons.xyz",
+  ];
+  for (const base of fallbacks) {
+    try {
+      const res = await fetchWithTimeout(`${base}/api/v1/trending`, { headers: { "User-Agent": "Mozilla/5.0" } }, 3000);
+      if (res.ok) return base;
+    } catch (_) {}
+  }
+  return null;
 }
 
 serve(async (req) => {
@@ -56,61 +70,68 @@ serve(async (req) => {
 
   try {
     const { query, maxResults = 25, type = "video" } = await req.json();
+    if (!query) throw new Error("Search query is required");
 
-    if (!query) {
-      throw new Error("Search query is required");
+    // Try Invidious
+    const inv = await getInvidiousBase();
+    if (inv) {
+      const url = new URL(`${inv}/api/v1/search`);
+      url.searchParams.set("q", query);
+      if (["video", "channel", "playlist", "all"].includes(type)) url.searchParams.set("type", type);
+      const res = await fetchWithTimeout(url.toString(), { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
+      if (res.ok) {
+        const results = await res.json();
+        const formatted = {
+          kind: "youtube#searchListResponse",
+          items: (results || []).slice(0, maxResults).map((item: any) => ({
+            kind: "youtube#searchResult",
+            id: { kind: `youtube#${item.type || "video"}`, videoId: item.videoId || item.playlistId || item.authorId },
+            snippet: {
+              publishedAt: item.published ? new Date(item.published * 1000).toISOString() : new Date().toISOString(),
+              channelId: item.authorId || "",
+              title: item.title || "",
+              description: item.description || "",
+              thumbnails: {
+                default: { url: item.videoThumbnails?.[0]?.url || "" },
+                medium: { url: item.videoThumbnails?.[2]?.url || item.videoThumbnails?.[0]?.url || "" },
+                high: { url: item.videoThumbnails?.[4]?.url || item.videoThumbnails?.[2]?.url || "" },
+              },
+              channelTitle: item.author || "",
+            },
+          })),
+        };
+        return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
-    const base = await getInvidiousBase();
-    const searchUrl = new URL(`${base}/api/v1/search`);
-    searchUrl.searchParams.set("q", query);
-    searchUrl.searchParams.set("type", ["video", "channel", "playlist", "all"].includes(type) ? type : "video");
+    // Fallback to Piped
+    const piped = await getPipedBase();
+    if (!piped) throw new Error("No search provider available");
+    const surl = new URL(`${piped}/api/v1/search`);
+    surl.searchParams.set("q", query);
+    const pres = await fetchWithTimeout(surl.toString(), { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
+    if (!pres.ok) throw new Error(`Search failed: ${pres.status}`);
+    const items = await pres.json();
 
-    const response = await fetchWithTimeout(searchUrl.toString(), {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    }, 7000);
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Search failed: ${response.status} ${body}`);
-    }
-
-    const results = await response.json();
-
-    const formattedData = {
+    const formatted = {
       kind: "youtube#searchListResponse",
-      items: (results || []).slice(0, maxResults).map((item: any) => ({
+      items: (Array.isArray(items) ? items : []).slice(0, maxResults).map((it: any) => ({
         kind: "youtube#searchResult",
-        id: {
-          kind: `youtube#${item.type || "video"}`,
-          videoId: item.videoId || item.playlistId || item.authorId,
-        },
+        id: { kind: "youtube#video", videoId: it.id || it.url || "" },
         snippet: {
-          publishedAt: item.published ? new Date(item.published * 1000).toISOString() : new Date().toISOString(),
-          channelId: item.authorId || "",
-          title: item.title || "",
-          description: item.description || "",
-          thumbnails: {
-            default: { url: item.videoThumbnails?.[0]?.url || "" },
-            medium: { url: item.videoThumbnails?.[2]?.url || item.videoThumbnails?.[0]?.url || "" },
-            high: { url: item.videoThumbnails?.[4]?.url || item.videoThumbnails?.[2]?.url || "" },
-          },
-          channelTitle: item.author || "",
+          publishedAt: it.uploaded ? new Date(it.uploaded).toISOString() : new Date().toISOString(),
+          channelId: it.uploaderUrl || "",
+          title: it.title || "",
+          description: it.shortDescription || "",
+          thumbnails: { default: { url: it.thumbnail || "" }, medium: { url: it.thumbnail || "" }, high: { url: it.thumbnail || "" } },
+          channelTitle: it.uploaderName || "",
         },
       })),
     };
 
-    return new Response(JSON.stringify(formattedData), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
   } catch (error: any) {
     console.error("Error searching videos:", error);
-    return new Response(
-      JSON.stringify({
-        error: error?.message || "Unknown error",
-        details: "Using dynamic Invidious instance - no YouTube API key required",
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: error?.message || "Unknown error", details: "Provider fallback (Invidious→Piped)" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
