@@ -78,29 +78,38 @@ serve(async (req) => {
       const url = new URL(`${inv}/api/v1/search`);
       url.searchParams.set("q", query);
       if (["video", "channel", "playlist", "all"].includes(type)) url.searchParams.set("type", type);
-      const res = await fetchWithTimeout(url.toString(), { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
+      const res = await fetchWithTimeout(url.toString(), { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }, 7000);
       if (res.ok) {
-        const results = await res.json();
-        const formatted = {
-          kind: "youtube#searchListResponse",
-          items: (results || []).slice(0, maxResults).map((item: any) => ({
-            kind: "youtube#searchResult",
-            id: { kind: `youtube#${item.type || "video"}`, videoId: item.videoId || item.playlistId || item.authorId },
-            snippet: {
-              publishedAt: item.published ? new Date(item.published * 1000).toISOString() : new Date().toISOString(),
-              channelId: item.authorId || "",
-              title: item.title || "",
-              description: item.description || "",
-              thumbnails: {
-                default: { url: item.videoThumbnails?.[0]?.url || "" },
-                medium: { url: item.videoThumbnails?.[2]?.url || item.videoThumbnails?.[0]?.url || "" },
-                high: { url: item.videoThumbnails?.[4]?.url || item.videoThumbnails?.[2]?.url || "" },
-              },
-              channelTitle: item.author || "",
-            },
-          })),
-        };
-        return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          const preview = await res.text().catch(() => "");
+          console.warn("Invidious returned non-JSON", preview.slice(0, 120));
+        } else {
+          let results: any[] = [];
+          try { results = await res.json(); } catch (e) { console.warn("JSON parse failed for Invidious", e); }
+          if (Array.isArray(results) && results.length) {
+            const formatted = {
+              kind: "youtube#searchListResponse",
+              items: (results || []).slice(0, maxResults).map((item: any) => ({
+                kind: "youtube#searchResult",
+                id: { kind: `youtube#${item.type || "video"}`, videoId: item.videoId || item.playlistId || item.authorId },
+                snippet: {
+                  publishedAt: item.published ? new Date(item.published * 1000).toISOString() : new Date().toISOString(),
+                  channelId: item.authorId || "",
+                  title: item.title || "",
+                  description: item.description || "",
+                  thumbnails: {
+                    default: { url: item.videoThumbnails?.[0]?.url || "" },
+                    medium: { url: item.videoThumbnails?.[2]?.url || item.videoThumbnails?.[0]?.url || "" },
+                    high: { url: item.videoThumbnails?.[4]?.url || item.videoThumbnails?.[2]?.url || "" },
+                  },
+                  channelTitle: item.author || "",
+                },
+              })),
+            } as const;
+            return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        }
       }
     }
 
@@ -109,8 +118,13 @@ serve(async (req) => {
     if (!piped) throw new Error("No search provider available");
     const surl = new URL(`${piped}/api/v1/search`);
     surl.searchParams.set("q", query);
-    const pres = await fetchWithTimeout(surl.toString(), { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
+    const pres = await fetchWithTimeout(surl.toString(), { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }, 7000);
     if (!pres.ok) throw new Error(`Search failed: ${pres.status}`);
+    const ct2 = pres.headers.get("content-type") || "";
+    if (!ct2.includes("application/json")) {
+      const preview = await pres.text().catch(() => "");
+      throw new Error(`Search provider returned non-JSON (${ct2}): ${preview.slice(0,120)}`);
+    }
     const items = await pres.json();
 
     const formatted = {
