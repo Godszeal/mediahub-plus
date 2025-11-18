@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const YOUTUBE_API_KEY = Deno.env.get("YOUTUBE_API_KEY");
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -13,46 +11,63 @@ serve(async (req) => {
   }
 
   try {
-    if (!YOUTUBE_API_KEY) {
-      console.error("YOUTUBE_API_KEY is not configured");
-      throw new Error("YouTube API key is not configured. Please add it in Settings > Secrets.");
-    }
-
     const { query, maxResults = 25, type = "video" } = await req.json();
 
     if (!query) {
       throw new Error("Search query is required");
     }
 
-    const url = new URL("https://www.googleapis.com/youtube/v3/search");
-    url.searchParams.append("part", "snippet");
-    url.searchParams.append("q", query);
-    url.searchParams.append("type", type);
-    url.searchParams.append("maxResults", maxResults.toString());
-    url.searchParams.append("key", YOUTUBE_API_KEY);
+    console.log(`Searching for: ${query} (using free Invidious API)`);
 
-    console.log(`Searching YouTube for: ${query}`);
-    const response = await fetch(url.toString());
+    // Use Invidious API for search (no API key required)
+    const searchUrl = `https://invidious.io/api/v1/search?q=${encodeURIComponent(query)}&type=${type}`;
+    const response = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`YouTube API error (${response.status}):`, errorBody);
-      
-      if (response.status === 403) {
-        throw new Error("YouTube API access denied. Please check: 1) API key is valid, 2) YouTube Data API v3 is enabled in Google Cloud Console, 3) API key has no restrictions blocking this request.");
-      }
-      throw new Error(`YouTube API error: ${response.status} - ${errorBody}`);
+      console.error(`Invidious API error: ${response.status}`);
+      throw new Error(`Search failed: ${response.status}`);
     }
 
-    const data = await response.json();
+    const results = await response.json();
 
-    return new Response(JSON.stringify(data), {
+    // Transform to match YouTube API format
+    const formattedData = {
+      kind: "youtube#searchListResponse",
+      items: results.slice(0, maxResults).map((item: any) => ({
+        kind: "youtube#searchResult",
+        id: {
+          kind: `youtube#${item.type}`,
+          videoId: item.videoId || item.playlistId || item.authorId,
+        },
+        snippet: {
+          publishedAt: item.publishedText || new Date().toISOString(),
+          channelId: item.authorId,
+          title: item.title,
+          description: item.description || "",
+          thumbnails: {
+            default: { url: item.videoThumbnails?.[0]?.url || "" },
+            medium: { url: item.videoThumbnails?.[2]?.url || "" },
+            high: { url: item.videoThumbnails?.[4]?.url || "" },
+          },
+          channelTitle: item.author,
+        },
+      })),
+    };
+
+    return new Response(JSON.stringify(formattedData), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Error searching videos:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Unknown error",
+        details: "Using free Invidious API - no YouTube API key required"
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
