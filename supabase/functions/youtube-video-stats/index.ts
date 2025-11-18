@@ -5,106 +5,79 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 5000) {
+function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 6000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   return fetch(resource, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
-async function getInvidiousBase(): Promise<string | null> {
+async function getInvidiousBases(): Promise<string[]> {
+  const bases: string[] = [];
   try {
     const res = await fetchWithTimeout(
       "https://api.invidious.io/instances.json?sort_by=type,health",
-      { headers: { "User-Agent": "Mozilla/5.0" } },
+      { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } },
       5000
     );
-    if (res.ok) {
+    if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
       const instances = await res.json();
       for (const entry of instances) {
         const domain = entry?.[0];
         const meta = entry?.[1] || {};
-        if (!domain || !meta) continue;
-        if (meta.api === true && (meta.type === "https" || (Array.isArray(meta.type) && meta.type.includes("https")))) {
-          const base = `https://${domain}`;
-          const stats = await fetchWithTimeout(`${base}/api/v1/stats`, { headers: { "User-Agent": "Mozilla/5.0" } }, 2500);
-          if (stats.ok) return base;
+        if (domain && meta?.api === true && (meta?.type === 'https' || (Array.isArray(meta?.type) && meta?.type.includes('https')))) {
+          bases.push(`https://${domain}`);
         }
       }
     }
   } catch (_) {}
-  const fallbacks = [
-    "https://yewtu.be",
-    "https://invidious.nerdvpn.de",
-    "https://inv.nadeko.net",
-    "https://vid.puffyan.us",
-  ];
-  for (const base of fallbacks) {
-    try {
-      const stats = await fetchWithTimeout(`${base}/api/v1/stats`, { headers: { "User-Agent": "Mozilla/5.0" } }, 2500);
-      if (stats.ok) return base;
-    } catch (_) {}
-  }
-  return null;
+  bases.push('https://yewtu.be','https://invidious.nerdvpn.de','https://inv.nadeko.net','https://vid.puffyan.us');
+  return Array.from(new Set(bases));
 }
 
-async function getPipedBase(): Promise<string | null> {
-  const fallbacks = [
-    "https://piped.video",
-    "https://pipedapi.kavin.rocks",
-    "https://piped.yt",
-    "https://watch.leptons.xyz",
-  ];
-  for (const base of fallbacks) {
-    try {
-      const res = await fetchWithTimeout(`${base}/api/v1/trending`, { headers: { "User-Agent": "Mozilla/5.0" } }, 3000);
-      if (res.ok) return base;
-    } catch (_) {}
-  }
-  return null;
+function getPipedBases(): string[] {
+  return ['https://pipedapi.kavin.rocks','https://piped.video','https://piped.yt','https://watch.leptons.xyz','https://piped.mha.fi'];
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const { videoIds } = await req.json();
     const ids = Array.isArray(videoIds) ? videoIds : String(videoIds || '').split(',').filter(Boolean);
     if (!ids.length) return new Response(JSON.stringify({ items: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 
-    const inv = await getInvidiousBase();
-    const piped = await getPipedBase();
-
-    const items = [] as any[];
+    const results: any[] = [];
 
     for (const id of ids) {
       let details: any | null = null;
 
-      // Try Invidious first
-      if (inv) {
+      // Try Invidious
+      for (const base of await getInvidiousBases()) {
         try {
-          const res = await fetchWithTimeout(`${inv}/api/v1/videos/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 6000);
-          if (res.ok) {
-            const v = await res.json();
-            const secs = Number(v.lengthSeconds || 0);
-            details = {
-              videoId: v.videoId || id,
-              duration: secs > 0 ? formatDuration(`PT${secs}S`) : '0:00',
-              views: parseInt(v.viewCount || 0),
-              likes: parseInt(v.likeCount || 0),
-              subscribers: 0,
-            };
-          }
+          const r = await fetchWithTimeout(`${base}/api/v1/videos/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }, 7000);
+          const ct = r.headers.get('content-type') || '';
+          if (!r.ok || !ct.includes('application/json')) continue;
+          const v = await r.json();
+          const secs = Number(v.lengthSeconds || 0);
+          details = {
+            videoId: v.videoId || id,
+            duration: secs > 0 ? formatDuration(`PT${secs}S`) : '0:00',
+            views: parseInt(v.viewCount || 0),
+            likes: parseInt(v.likeCount || 0),
+            subscribers: 0,
+          };
+          break;
         } catch (_) {}
       }
 
       // Fallback to Piped
-      if (!details && piped) {
-        try {
-          const res = await fetchWithTimeout(`${piped}/api/v1/video/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 6000);
-          if (res.ok) {
-            const v = await res.json();
+      if (!details) {
+        for (const base of getPipedBases()) {
+          try {
+            const r = await fetchWithTimeout(`${base}/api/v1/video/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }, 7000);
+            const ct = r.headers.get('content-type') || '';
+            if (!r.ok || !ct.includes('application/json')) continue;
+            const v = await r.json();
             const secs = Number(v.duration || 0);
             details = {
               videoId: id,
@@ -113,16 +86,17 @@ serve(async (req) => {
               likes: parseInt(v.likes || 0),
               subscribers: 0,
             };
-          }
-        } catch (_) {}
+            break;
+          } catch (_) {}
+        }
       }
 
-      if (details) items.push(details);
+      if (details) results.push(details);
     }
 
-    return new Response(JSON.stringify({ items }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
+    return new Response(JSON.stringify({ items: results }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
   } catch (error: any) {
-    console.error('Error fetching video stats:', error);
+    console.error('Video stats error:', error?.message);
     return new Response(JSON.stringify({ error: error?.message || 'An error occurred', details: 'Provider fallback (Invidious→Piped)' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
   }
 });
