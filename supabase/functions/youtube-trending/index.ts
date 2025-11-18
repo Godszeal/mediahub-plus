@@ -31,7 +31,9 @@ async function getInvidiousBase(): Promise<string | null> {
         }
       }
     }
-  } catch (_) {}
+  } catch (_) {
+    // ignore and continue to fallbacks
+  }
   const fallbacks = [
     "https://yewtu.be",
     "https://invidious.nerdvpn.de",
@@ -42,7 +44,9 @@ async function getInvidiousBase(): Promise<string | null> {
     try {
       const stats = await fetchWithTimeout(`${base}/api/v1/stats`, { headers: { "User-Agent": "Mozilla/5.0" } }, 2500);
       if (stats.ok) return base;
-    } catch (_) {}
+    } catch (_) {
+      // keep trying next
+    }
   }
   return null;
 }
@@ -58,18 +62,21 @@ async function getPipedBase(): Promise<string | null> {
     try {
       const res = await fetchWithTimeout(`${base}/api/v1/trending`, { headers: { "User-Agent": "Mozilla/5.0" } }, 3000);
       if (res.ok) return base;
-    } catch (_) {}
+    } catch (_) {
+      // try next
+    }
   }
   return null;
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({} as any));
     const category = (body?.category || "").toString().toLowerCase();
     const allowed = ["default", "music", "gaming", "news"]; // avoid movies (often unsupported)
 
@@ -78,11 +85,13 @@ serve(async (req) => {
     if (inv) {
       const url = new URL(`${inv}/api/v1/trending`);
       if (category && allowed.includes(category)) url.searchParams.set("type", category);
+
       const response = await fetchWithTimeout(
         url.toString(),
         { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } },
         7000
       );
+
       if (response.ok) {
         const ct = response.headers.get("content-type") || "";
         if (ct.includes("application/json")) {
@@ -108,15 +117,31 @@ serve(async (req) => {
               statistics: { viewCount: String(video.viewCount || 0), likeCount: String(video.likeCount || 0) },
             })),
           } as const;
-          return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+          return new Response(JSON.stringify(formatted), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 
     // Fallback to Piped
     const piped = await getPipedBase();
     if (!piped) throw new Error("No video provider available");
-    const pres = await fetchWithTimeout(`${piped}/api/v1/trending`, { headers: { "User-Agent": "Mozilla/5.0" } }, 7000);
+
+    const pres = await fetchWithTimeout(
+      `${piped}/api/v1/trending`,
+      { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } },
+      7000
+    );
     if (!pres.ok) throw new Error(`Failed to fetch trending videos: ${pres.status}`);
+
+    const ct = pres.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      const snippet = await pres.text().catch(() => "");
+      throw new Error(`Piped returned non-JSON (${ct}): ${snippet.slice(0, 120)}`);
+    }
+
     const pvideos = await pres.json();
 
     const formatted = {
@@ -129,17 +154,30 @@ serve(async (req) => {
           channelId: v.uploaderUrl || "",
           title: v.title || "",
           description: v.shortDescription || "",
-          thumbnails: { default: { url: v.thumbnail || "" }, medium: { url: v.thumbnail || "" }, high: { url: v.thumbnail || "" } },
+          thumbnails: {
+            default: { url: v.thumbnail || "" },
+            medium: { url: v.thumbnail || "" },
+            high: { url: v.thumbnail || "" },
+          },
           channelTitle: v.uploaderName || "",
         },
         contentDetails: { duration: `PT${Number(v.duration || 0)}S` },
         statistics: { viewCount: String(v.views || 0), likeCount: "0" },
       })),
-    };
+    } as const;
 
-    return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+    return new Response(JSON.stringify(formatted), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error: any) {
     console.error("Error fetching trending videos:", error);
-    return new Response(JSON.stringify({ error: error?.message || "Unknown error", details: "Provider fallback (Invidious→Piped)" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        error: error?.message || "Unknown error",
+        details: "Provider fallback (Invidious→Piped)",
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
