@@ -5,13 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 4000) {
+function fetchWithTimeout(resource: string, options: RequestInit = {}, timeout = 5000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   return fetch(resource, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
-async function getInvidiousBase(): Promise<string> {
+async function getInvidiousBase(): Promise<string | null> {
   try {
     const res = await fetchWithTimeout(
       "https://api.invidious.io/instances.json?sort_by=type,health",
@@ -31,9 +31,7 @@ async function getInvidiousBase(): Promise<string> {
         }
       }
     }
-  } catch (e) {
-    console.warn("Failed to fetch instances list", e);
-  }
+  } catch (_) {}
   const fallbacks = [
     "https://yewtu.be",
     "https://invidious.nerdvpn.de",
@@ -46,7 +44,23 @@ async function getInvidiousBase(): Promise<string> {
       if (stats.ok) return base;
     } catch (_) {}
   }
-  return "https://yewtu.be";
+  return null;
+}
+
+async function getPipedBase(): Promise<string | null> {
+  const fallbacks = [
+    "https://piped.video",
+    "https://pipedapi.kavin.rocks",
+    "https://piped.yt",
+    "https://watch.leptons.xyz",
+  ];
+  for (const base of fallbacks) {
+    try {
+      const res = await fetchWithTimeout(`${base}/api/v1/trending`, { headers: { "User-Agent": "Mozilla/5.0" } }, 3000);
+      if (res.ok) return base;
+    } catch (_) {}
+  }
+  return null;
 }
 
 serve(async (req) => {
@@ -56,53 +70,60 @@ serve(async (req) => {
 
   try {
     const { videoIds } = await req.json();
+    const ids = Array.isArray(videoIds) ? videoIds : String(videoIds || '').split(',').filter(Boolean);
+    if (!ids.length) return new Response(JSON.stringify({ items: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 
-    if (!videoIds || (Array.isArray(videoIds) && videoIds.length === 0)) {
-      return new Response(JSON.stringify({ items: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
-    }
+    const inv = await getInvidiousBase();
+    const piped = await getPipedBase();
 
-    const base = await getInvidiousBase();
+    const items = [] as any[];
 
-    const videoPromises = (Array.isArray(videoIds) ? videoIds : String(videoIds).split(',')).map(async (videoId: string) => {
-      try {
-        const response = await fetchWithTimeout(
-          `${base}/api/v1/videos/${videoId}`,
-          { headers: { 'User-Agent': 'Mozilla/5.0' } },
-          7000
-        );
+    for (const id of ids) {
+      let details: any | null = null;
 
-        if (!response.ok) {
-          console.error(`Failed to fetch video ${videoId}: ${response.status}`);
-          return null;
-        }
-
-        const video = await response.json();
-        const lengthSeconds = Number(video.lengthSeconds || 0);
-        const duration = lengthSeconds > 0 ? formatDuration(`PT${lengthSeconds}S`) : '0:00';
-
-        return {
-          videoId: video.videoId || videoId,
-          duration,
-          views: parseInt(video.viewCount || 0),
-          likes: parseInt(video.likeCount || 0),
-          subscribers: 0,
-        };
-      } catch (error) {
-        console.error(`Error fetching video ${videoId}:`, error);
-        return null;
+      // Try Invidious first
+      if (inv) {
+        try {
+          const res = await fetchWithTimeout(`${inv}/api/v1/videos/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 6000);
+          if (res.ok) {
+            const v = await res.json();
+            const secs = Number(v.lengthSeconds || 0);
+            details = {
+              videoId: v.videoId || id,
+              duration: secs > 0 ? formatDuration(`PT${secs}S`) : '0:00',
+              views: parseInt(v.viewCount || 0),
+              likes: parseInt(v.likeCount || 0),
+              subscribers: 0,
+            };
+          }
+        } catch (_) {}
       }
-    });
 
-    const results = await Promise.all(videoPromises);
-    const items = results.filter((x) => x !== null);
+      // Fallback to Piped
+      if (!details && piped) {
+        try {
+          const res = await fetchWithTimeout(`${piped}/api/v1/video/${id}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 6000);
+          if (res.ok) {
+            const v = await res.json();
+            const secs = Number(v.duration || 0);
+            details = {
+              videoId: id,
+              duration: secs > 0 ? formatDuration(`PT${secs}S`) : '0:00',
+              views: parseInt(v.views || 0),
+              likes: parseInt(v.likes || 0),
+              subscribers: 0,
+            };
+          }
+        } catch (_) {}
+      }
+
+      if (details) items.push(details);
+    }
 
     return new Response(JSON.stringify({ items }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
   } catch (error: any) {
     console.error('Error fetching video stats:', error);
-    return new Response(
-      JSON.stringify({ error: error?.message || 'An error occurred', details: 'Using dynamic Invidious instance - no YouTube API key required' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    );
+    return new Response(JSON.stringify({ error: error?.message || 'An error occurred', details: 'Provider fallback (Invidious→Piped)' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
   }
 });
 
