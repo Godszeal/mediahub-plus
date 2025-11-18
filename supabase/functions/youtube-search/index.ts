@@ -13,6 +13,11 @@ serve(async (req) => {
   }
 
   try {
+    if (!YOUTUBE_API_KEY) {
+      console.error("YOUTUBE_API_KEY is not configured");
+      throw new Error("YouTube API key is not configured. Please add it in Settings > Secrets.");
+    }
+
     const { query, maxResults = 25, type = "video" } = await req.json();
 
     if (!query) {
@@ -24,12 +29,19 @@ serve(async (req) => {
     url.searchParams.append("q", query);
     url.searchParams.append("type", type);
     url.searchParams.append("maxResults", maxResults.toString());
-    url.searchParams.append("key", YOUTUBE_API_KEY!);
+    url.searchParams.append("key", YOUTUBE_API_KEY);
 
+    console.log(`Searching YouTube for: ${query}`);
     const response = await fetch(url.toString());
 
     if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`YouTube API error (${response.status}):`, errorBody);
+      
+      if (response.status === 403) {
+        throw new Error("YouTube API access denied. Please check: 1) API key is valid, 2) YouTube Data API v3 is enabled in Google Cloud Console, 3) API key has no restrictions blocking this request.");
+      }
+      throw new Error(`YouTube API error: ${response.status} - ${errorBody}`);
     }
 
     const data = await response.json();
