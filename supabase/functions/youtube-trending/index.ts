@@ -109,29 +109,6 @@ serve(async (req) => {
             })),
           } as const;
           return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-      }
-          kind: "youtube#videoListResponse",
-          items: (videos || []).slice(0, 50).map((video: any) => ({
-            kind: "youtube#video",
-            id: video.videoId,
-            snippet: {
-              publishedAt: video.published ? new Date(video.published * 1000).toISOString() : new Date().toISOString(),
-              channelId: video.authorId || "",
-              title: video.title || "",
-              description: video.description || "",
-              thumbnails: {
-                default: { url: video.videoThumbnails?.[0]?.url || "" },
-                medium: { url: video.videoThumbnails?.[2]?.url || video.videoThumbnails?.[0]?.url || "" },
-                high: { url: video.videoThumbnails?.[4]?.url || video.videoThumbnails?.[2]?.url || "" },
-              },
-              channelTitle: video.author || "",
-            },
-            contentDetails: { duration: `PT${Number(video.lengthSeconds || 0)}S` },
-            statistics: { viewCount: String(video.viewCount || 0), likeCount: String(video.likeCount || 0) },
-          })),
-        };
-        return new Response(JSON.stringify(formatted), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
