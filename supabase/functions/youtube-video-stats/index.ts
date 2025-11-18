@@ -12,32 +12,53 @@ serve(async (req) => {
 
   try {
     const { videoIds } = await req.json();
-    const apiKey = Deno.env.get('YOUTUBE_API_KEY');
 
-    if (!apiKey) {
-      throw new Error('YouTube API key not configured');
+    if (!videoIds || videoIds.length === 0) {
+      return new Response(
+        JSON.stringify({ items: [] }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
     }
 
-    const videoIdsString = Array.isArray(videoIds) ? videoIds.join(',') : videoIds;
-    
-    const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIdsString}&key=${apiKey}`
-    );
+    console.log(`Fetching stats for ${videoIds.length} videos using Invidious API`);
 
-    if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.statusText}`);
-    }
+    // Fetch video details from Invidious API (no API key needed)
+    const videoPromises = videoIds.map(async (videoId: string) => {
+      try {
+        const response = await fetch(
+          `https://invidious.io/api/v1/videos/${videoId}`,
+          {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          }
+        );
 
-    const data = await response.json();
+        if (!response.ok) {
+          console.error(`Failed to fetch video ${videoId}: ${response.status}`);
+          return null;
+        }
 
-    // Format the response
-    const formattedData = data.items?.map((item: any) => ({
-      videoId: item.id,
-      duration: formatDuration(item.contentDetails.duration),
-      views: parseInt(item.statistics.viewCount || 0),
-      likes: parseInt(item.statistics.likeCount || 0),
-      subscribers: parseInt(item.statistics.subscriberCount || 0),
-    })) || [];
+        const video = await response.json();
+        
+        return {
+          videoId: video.videoId,
+          duration: formatDuration(`PT${video.lengthSeconds}S`),
+          views: parseInt(video.viewCount || 0),
+          likes: parseInt(video.likeCount || 0),
+          subscribers: 0,
+        };
+      } catch (error) {
+        console.error(`Error fetching video ${videoId}:`, error);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(videoPromises);
+    const formattedData = results.filter(item => item !== null);
 
     return new Response(
       JSON.stringify({ items: formattedData }),
@@ -50,7 +71,10 @@ serve(async (req) => {
     console.error('Error fetching video stats:', error);
     
     return new Response(
-      JSON.stringify({ error: error?.message || 'An error occurred' }),
+      JSON.stringify({ 
+        error: error?.message || 'An error occurred',
+        details: "Using free Invidious API - no YouTube API key required"
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
