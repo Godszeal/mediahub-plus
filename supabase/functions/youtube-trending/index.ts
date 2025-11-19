@@ -171,13 +171,15 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error: any) {
-    console.error("Error fetching trending videos:", error);
-    return new Response(
-      JSON.stringify({
-        error: error?.message || "Unknown error",
-        details: "Provider fallback (Invidious→Piped)",
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("Error fetching trending videos:", error?.message || error);
+    // Gracefully degrade to an empty list instead of a 500 error
+    const empty = {
+      kind: "youtube#videoListResponse",
+      items: [],
+    } as const;
+    return new Response(JSON.stringify(empty), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   }
 });

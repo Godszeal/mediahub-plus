@@ -121,6 +121,13 @@ serve(async (req) => {
     throw new Error("No search provider returned JSON");
   } catch (error: any) {
     console.error("Search error:", error?.message);
-    return new Response(JSON.stringify({ error: error?.message || "Unknown error", details: "Provider fallback (Invidious→Piped)" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Gracefully degrade to an empty result set instead of a 500 error
+    const empty = {
+      kind: "youtube#searchListResponse",
+      items: [],
+    } as const;
+    return new Response(JSON.stringify(empty), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
